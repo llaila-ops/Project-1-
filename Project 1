@@ -1,3 +1,16 @@
+# SI 201 Project 1: Data Analysis - Penguin Metrics
+#
+# Name: Laila Larkins
+# Date: October 11, 2025
+#
+# Description: This program imports the 'penguins.csv' dataset, performs three
+#              unique calculations based on bill and flipper dimensions, and
+#              writes the resulting data, including the new metrics, to a new CSV file.
+#              The code implements a robust function decomposition and includes
+#              unit tests for all major calculation functions.
+#
+
+
 import csv
 import math
 
