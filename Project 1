@@ -1,4 +1,5 @@
 import csv
+import math
 
 # --- Global Constants (Pre-calculated from the entire dataset for Z-score) ---
 # Global Mean (μ) and Standard Deviation (σ) for 'flipper_length_mm'
@@ -23,6 +24,7 @@ def calculate_penguin_metrics(data_list_of_dicts):
     for record in data_list_of_dicts:
         # Attempt to convert relevant fields to float, skipping records with missing data (NA)
         try:
+            # We use float() here because the values from the CSV are strings
             bill_l = float(record['bill_length_mm'])
             bill_d = float(record['bill_depth_mm'])
             flipper_l = float(record['flipper_length_mm'])
@@ -36,7 +38,6 @@ def calculate_penguin_metrics(data_list_of_dicts):
             
         except ValueError:
             # Skip records where bill_length_mm, bill_depth_mm, or flipper_length_mm is 'NA'
-            # Note: For production code, better NA handling (e.g., imputation) would be used.
             continue 
             
     return processed_data
@@ -45,35 +46,54 @@ def calculate_penguin_metrics(data_list_of_dicts):
 
 def calculate_bill_index(bill_length, bill_depth):
     """Calculates the Bill Index (Ratio): bill_length / bill_depth."""
+    if bill_depth == 0:
+        return math.nan # Return a Not a Number for division by zero
     return bill_length / bill_depth
 
 def calculate_flipper_zscore(flipper_length, mu, sigma):
     """
     Calculates the Flipper Z-score: (value - mean) / std_dev.
-    It calls the conceptual Level 2 functions implicitly via the constants.
+    Uses pre-calculated global mean (mu) and standard deviation (sigma).
     """
-    
+    if sigma == 0:
+        # This case is highly unlikely for real data but handles the edge case 
+        # where there is no variation.
+        return 0.0 if flipper_length == mu else math.nan
+        
+    return (flipper_length - mu) / sigma
+
 def calculate_volumetric_proxy(bill_length, bill_depth, flipper_length):
     """Calculates the Penguin Volumetric Proxy: L * D * Flipper L."""
     return bill_length * bill_depth * flipper_length
 
-# --- Helper Functions (Conceptual Level 2) for Z-Score ---
 
+# --- Helper Functions (Conceptual Level 2) for Z-Score ---
+# These are kept for documentation/decomposition structure but are not used 
+# dynamically in the main calculation function.
 def get_mean(data_series):
     """Conceptual function to calculate the mean of a data series."""
+    return sum(data_series) / len(data_series)
 
 def get_std_dev(data_series, mu):
     """Conceptual function to calculate the standard deviation of a data series."""
+    # Logic for calculating the standard deviation
+    pass 
 
-# --- File I/O Functions (For Project Requirements) ---
+# --- File I/O Functions ---
 
 def read_csv_to_list_of_dicts(filename):
     """Imports a CSV file and returns the data as a list of dictionaries."""
     data = []
-    with open(filename, mode='r', newline='', encoding='utf-8') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            data.append(row)
+    try:
+        with open(filename, mode='r', newline='', encoding='utf-8') as file:
+            # Use DictReader to read each row as a dictionary
+            reader = csv.DictReader(file)
+            for row in reader:
+                data.append(row)
+    except FileNotFoundError:
+        print(f"Error: The file {filename} was not found.")
+        return []
+        
     return data
 
 def write_results_to_file(filename, data):
@@ -82,21 +102,107 @@ def write_results_to_file(filename, data):
         print("No data to write.")
         return
 
-    fieldnames = data[0].keys()
+    # Get all column names from the first record
+    fieldnames = list(data[0].keys())
     
     with open(filename, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         
+        # Write the header
         writer.writeheader()
         
+        # Write the data rows
         writer.writerows(data)
     
-    print(f"Successfully wrote {len(data)} processed records to {filename}")
+    print(f"\n[OUTPUT] Successfully wrote {len(data)} processed records to {filename}")
 
+# --- Test Functions (Required for Project Rubric) ---
+
+def test_calculate_bill_index():
+    """Tests the calculate_bill_index function for general and edge cases."""
+    print("--- Running Bill Index Tests ---")
+    
+    # 1. General/Usual Test Case (A typical penguin)
+    # 39.10 / 18.70 = 2.0909...
+    result_usual = calculate_bill_index(39.10, 18.70)
+    expected_usual = 2.0909 # Use a few decimal places for comparison
+    assert math.isclose(result_usual, expected_usual, rel_tol=1e-4), f"Usual Case Failed: Got {result_usual}, Expected approx {expected_usual}"
+    print(" Usual Case Passed: Typical ratio.")
+
+    # 2. Edge Case: Division by Zero (Bill Depth = 0)
+    # The function should handle this to prevent crashing.
+    result_zero = calculate_bill_index(39.10, 0)
+    assert math.isnan(result_zero), f"Edge Case (Zero) Failed: Got {result_zero}, Expected NaN"
+    print(" Edge Case Passed: Bill depth is zero (returns NaN).")
+    
+    # 3. Edge Case: Bill Depth > Bill Length (Ratio < 1)
+    # An anatomically unlikely case, but tests the math for ratio less than one.
+    result_less_than_one = calculate_bill_index(10.0, 50.0)
+    expected_less_than_one = 0.2
+    assert math.isclose(result_less_than_one, expected_less_than_one, rel_tol=1e-9), f"Edge Case (Ratio < 1) Failed: Got {result_less_than_one}, Expected {expected_less_than_one}"
+    print(" Edge Case Passed: Ratio less than 1.")
+    print("--- Bill Index Tests Complete ---\n")
+
+def test_calculate_flipper_zscore():
+    """Tests the calculate_flipper_zscore function for general and edge cases."""
+    print("--- Running Flipper Z-score Tests ---")
+    
+    # 1. General/Usual Test Case (Value far below the mean, negative Z-score)
+    # Use real constants: MU_FLIPPER = 200.92, SIGMA_FLIPPER = 14.06
+    # (181.00 - 200.92) / 14.06 = -1.417...
+    flipper_low = 181.00
+    result_usual = calculate_flipper_zscore(flipper_low, MU_FLIPPER, SIGMA_FLIPPER)
+    expected_usual = -1.4170
+    assert math.isclose(result_usual, expected_usual, rel_tol=1e-4), f"Usual Case Failed: Got {result_usual}, Expected approx {expected_usual}"
+    print(" Usual Case Passed: Flipper length is 1.42 std dev below mean.")
+
+    # 2. Edge Case: Value exactly equal to the mean (Z-score should be 0)
+    result_mean = calculate_flipper_zscore(MU_FLIPPER, MU_FLIPPER, SIGMA_FLIPPER)
+    expected_mean = 0.0
+    assert math.isclose(result_mean, expected_mean, rel_tol=1e-9), f"Edge Case (Mean) Failed: Got {result_mean}, Expected {expected_mean}"
+    print("  ✓ Edge Case Passed: Flipper length equals the mean (Z-score 0).")
+
+    # 3. Edge Case: Value far above the mean (Positive Z-score)
+    # (230.00 - 200.92) / 14.06 = 2.068...
+    flipper_high = 230.00
+    result_high = calculate_flipper_zscore(flipper_high, MU_FLIPPER, SIGMA_FLIPPER)
+    expected_high = 2.0683
+    assert math.isclose(result_high, expected_high, rel_tol=1e-4), f"Edge Case (High) Failed: Got {result_high}, Expected approx {expected_high}"
+    print(" Edge Case Passed: Flipper length is far above the mean.")
+    print("--- Flipper Z-score Tests Complete ---\n")
+
+def test_calculate_volumetric_proxy():
+    """Tests the calculate_volumetric_proxy function for general and edge cases."""
+    print("--- Running Volumetric Proxy Tests ---")
+
+    # 1. General/Usual Test Case (A typical penguin)
+    # 39.10 * 18.70 * 181.00 = 132341.77
+    result_usual = calculate_volumetric_proxy(39.10, 18.70, 181.00)
+    expected_usual = 132341.77
+    assert math.isclose(result_usual, expected_usual, rel_tol=1e-9), f"Usual Case Failed: Got {result_usual}, Expected {expected_usual}"
+    print(" Usual Case Passed: Typical non-zero product.")
+
+    # 2. Edge Case: One dimension is zero (Result should be 0)
+    result_zero_bill = calculate_volumetric_proxy(0, 18.70, 181.00)
+    expected_zero = 0.0
+    assert math.isclose(result_zero_bill, expected_zero, rel_tol=1e-9), f"Edge Case (Zero Bill L) Failed: Got {result_zero_bill}, Expected {expected_zero}"
+    print(" Edge Case Passed: One dimension is zero (result is 0).")
+    
+    # 3. Edge Case: Extremely large numbers (Tests precision and overflow, though unlikely in biological data)
+    # 1000 * 1000 * 1000 = 1,000,000,000 (1 billion)
+    result_large = calculate_volumetric_proxy(1000.0, 1000.0, 1000.0)
+    expected_large = 1000000000.0
+    assert math.isclose(result_large, expected_large, rel_tol=1e-9), f"Edge Case (Large) Failed: Got {result_large}, Expected {expected_large}"
+    print(" Edge Case Passed: Large input values.")
+    print("--- Volumetric Proxy Tests Complete ---\n")
 
 # --- Execution Block ---
 
 if __name__ == '__main__':
+    test_calculate_bill_index()
+    test_calculate_flipper_zscore()
+    test_calculate_volumetric_proxy()
+
     # 1. Read data (Implementation of the 'Import' step)
     penguins_data = read_csv_to_list_of_dicts("penguins.csv")
     
@@ -105,3 +211,5 @@ if __name__ == '__main__':
     
     # 3. Write results to file (Implementation of 'File Output Function')
     write_results_to_file("penguin_metrics_results.csv", calculated_results)
+    
+    print("\n[INFO] All tests passed and the main program completed execution.")
